@@ -6,12 +6,14 @@ import { PromptDetailModal } from './components/PromptDetailModal';
 import { PromptFormModal } from './components/PromptFormModal';
 import { ImportModal } from './components/ImportModal';
 import { CategoryManagerModal } from './components/CategoryManagerModal';
+import { ExportModal } from './components/ExportModal';
+import { AdvancedFilter } from './components/AdvancedFilter';
 import { LoginPage } from './components/LoginPage';
 import { SettingsPage } from './components/SettingsPage';
 import { HelpPage } from './components/HelpPage';
-import { Prompt, CategoryStats, CategoryTree, TagStats } from './types';
-import { CATEGORY_COLORS } from './constants';
+import { Prompt, CategoryStats, CategoryTree, TagStats, PromptFilter } from './types';
 import { storageService } from './services/storageService';
+import { DEFAULT_ATTRIBUTES } from './constants';
 
 type Page = 'dashboard' | 'settings' | 'help' | 'login';
 
@@ -21,23 +23,35 @@ function App() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [categoryTree, setCategoryTree] = useState<CategoryTree>({});
   
+  // Custom Attributes State
+  const [attributes, setAttributes] = useState<typeof DEFAULT_ATTRIBUTES>(DEFAULT_ATTRIBUTES);
+
   // Selection State
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  const [minRating, setMinRating] = useState<number>(0);
-  const [searchQuery, setSearchQuery] = useState('');
+  // Advanced Filters State
+  const [filters, setFilters] = useState<PromptFilter>({
+      minRating: 0,
+      searchQuery: '',
+      source: undefined,
+      author: undefined,
+      parameterType: undefined,
+      agentPlatform: undefined,
+      scenario: undefined,
+      model: undefined
+  });
   
   // Modals
   const [viewingPrompt, setViewingPrompt] = useState<Prompt | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   
-  // Settings Modal State
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
-  const [categoryManagerInitialTab, setCategoryManagerInitialTab] = useState<'categories' | 'tags'>('categories');
+  const [categoryManagerInitialTab, setCategoryManagerInitialTab] = useState<string>('categories');
 
   // --- Effects ---
   useEffect(() => {
@@ -47,6 +61,9 @@ function App() {
     
     const loadedCategories = storageService.getCategoryTree();
     setCategoryTree(loadedCategories);
+
+    const loadedAttributes = storageService.getAttributes();
+    setAttributes(loadedAttributes);
   }, []);
 
   useEffect(() => {
@@ -56,30 +73,52 @@ function App() {
   }, [prompts]);
 
   // --- Logic ---
+
+  // Dynamic Options for Filters (Merge Custom Attributes + Used Values)
+  const availableFilterOptions = useMemo(() => {
+      const getUnique = (field: keyof Prompt, defaultList: string[]) => 
+        Array.from(new Set([
+            ...defaultList,
+            ...prompts.map(p => p[field] as string).filter(Boolean)
+        ]));
+
+      return {
+          sources: getUnique('source', attributes.sources),
+          authors: getUnique('author', attributes.authors),
+          parameterTypes: getUnique('parameterType', attributes.parameterTypes),
+          agentPlatforms: getUnique('agentPlatform', attributes.agentPlatforms),
+          scenarios: getUnique('scenario', attributes.scenarios),
+          models: getUnique('model', attributes.models),
+      };
+  }, [prompts, attributes]);
+
+
   const filteredPrompts = useMemo(() => {
     return prompts.filter(p => {
-      // 1. Filter by Category
+      // 1. Sidebar Filters
       if (selectedCategory && p.category !== selectedCategory) return false;
-      
-      // 2. Filter by SubCategory (if selected)
       if (selectedSubCategory && p.subCategory !== selectedSubCategory) return false;
-      
-      // 3. Filter by Tag
       if (selectedTag && (!p.tags || !p.tags.includes(selectedTag))) return false;
 
-      // 4. Filter by Rating
-      if (minRating > 0 && p.rating < minRating) return false;
-
-      // 5. Search Query
-      if (searchQuery) {
-          const searchLower = searchQuery.toLowerCase();
+      // 2. Rating & Search
+      if (filters.minRating > 0 && p.rating < filters.minRating) return false;
+      if (filters.searchQuery) {
+          const searchLower = filters.searchQuery.toLowerCase();
           const matches = p.title.toLowerCase().includes(searchLower) || p.content.toLowerCase().includes(searchLower);
           if (!matches) return false;
       }
 
+      // 3. Advanced Filters (6 Dimensions)
+      if (filters.source && p.source !== filters.source) return false;
+      if (filters.author && p.author !== filters.author) return false;
+      if (filters.parameterType && p.parameterType !== filters.parameterType) return false;
+      if (filters.agentPlatform && p.agentPlatform !== filters.agentPlatform) return false;
+      if (filters.scenario && p.scenario !== filters.scenario) return false;
+      if (filters.model && p.model !== filters.model) return false;
+
       return true;
     }).sort((a, b) => b.createdAt - a.createdAt); // Newest first
-  }, [prompts, selectedCategory, selectedSubCategory, selectedTag, minRating, searchQuery]);
+  }, [prompts, selectedCategory, selectedSubCategory, selectedTag, filters]);
 
   // Derived stats for sidebar
   const stats: CategoryStats = useMemo(() => {
@@ -152,6 +191,11 @@ function App() {
         setSelectedSubCategory(null);
     }
   };
+  
+  const handleAttributesSave = (newAttributes: typeof DEFAULT_ATTRIBUTES) => {
+      setAttributes(newAttributes);
+      storageService.saveAttributes(newAttributes);
+  };
 
   const handleUpdatePrompts = (updatedPrompts: Prompt[]) => {
       setPrompts(updatedPrompts);
@@ -166,17 +210,20 @@ function App() {
       setCategoryManagerInitialTab('tags');
       setIsCategoryManagerOpen(true);
   };
+  
+  const openAttributeManager = () => {
+      setCategoryManagerInitialTab('sources'); // Default to first attr
+      setIsCategoryManagerOpen(true);
+  };
 
   // --- Render ---
 
-  // 1. Login Page
   if (currentPage === 'login') {
       return <LoginPage onLogin={() => setCurrentPage('dashboard')} />;
   }
 
-  // 2. Main App Layout (Sidebar + Content)
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans">
+    <div className="flex min-h-screen bg-[#EFF3F6] font-sans">
       <Sidebar 
         categoryTree={categoryTree}
         selectedCategory={selectedCategory}
@@ -196,115 +243,138 @@ function App() {
         
         {currentPage === 'dashboard' ? (
             <>
-                {/* Dashboard Header */}
-                <header className="bg-white border-b border-slate-200 px-8 py-4 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0 z-10">
-                    <div className="flex items-center w-full md:w-auto gap-4 flex-1 max-w-2xl">
+                {/* Header */}
+                <header className="px-8 py-6 flex flex-col md:flex-row gap-6 justify-between items-center shrink-0 z-10">
+                    <div className="flex items-center w-full md:w-auto gap-4 flex-1 max-w-3xl">
+                        {/* Search Bar Neumorphic */}
                         <div className="relative w-full">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <SearchIcon className="text-slate-400" />
                             </div>
                             <input
                                 type="text"
-                                placeholder="搜索标题或内容关键词..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all sm:text-sm"
+                                placeholder="搜索标题或内容..."
+                                value={filters.searchQuery}
+                                onChange={(e) => setFilters({...filters, searchQuery: e.target.value})}
+                                className="neu-pressed w-full pl-11 pr-4 py-3 rounded-2xl text-slate-600 placeholder-slate-400 focus:outline-none focus:text-indigo-600 transition-all"
                             />
                         </div>
-                        <div className="flex items-center bg-slate-50 rounded-lg p-1 border border-slate-200 shrink-0">
-                        <button 
-                                onClick={() => setMinRating(0)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${minRating === 0 ? 'bg-white text-slate-800 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            全部
-                        </button>
-                        <button 
-                                onClick={() => setMinRating(4)}
-                                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${minRating === 4 ? 'bg-white text-amber-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            4+ <StarIcon filled={true} className="w-3 h-3" />
-                        </button>
-                        <button 
-                                onClick={() => setMinRating(5)}
-                                className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${minRating === 5 ? 'bg-white text-amber-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            5 <StarIcon filled={true} className="w-3 h-3" />
-                        </button>
+                        
+                        {/* Rating Filter Neumorphic */}
+                        <div className="neu-flat flex items-center p-1 rounded-xl shrink-0">
+                            <button 
+                                    onClick={() => setFilters({...filters, minRating: 0})}
+                                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${filters.minRating === 0 ? 'neu-pressed text-indigo-500' : 'text-slate-500 hover:text-indigo-500'}`}
+                            >
+                                全部
+                            </button>
+                            <button 
+                                    onClick={() => setFilters({...filters, minRating: 4})}
+                                    className={`flex items-center gap-1 px-4 py-2 text-xs font-bold rounded-lg transition-all ${filters.minRating === 4 ? 'neu-pressed text-amber-500' : 'text-slate-500 hover:text-amber-500'}`}
+                            >
+                                4+ <StarIcon filled={true} className="w-3 h-3" />
+                            </button>
+                            <button 
+                                    onClick={() => setFilters({...filters, minRating: 5})}
+                                    className={`flex items-center gap-1 px-4 py-2 text-xs font-bold rounded-lg transition-all ${filters.minRating === 5 ? 'neu-pressed text-amber-500' : 'text-slate-500 hover:text-amber-500'}`}
+                            >
+                                5 <StarIcon filled={true} className="w-3 h-3" />
+                            </button>
                         </div>
                     </div>
 
-                    <div className="flex gap-3 w-full md:w-auto justify-end">
+                    <div className="flex gap-4 w-full md:w-auto justify-end">
+                         <button 
+                            onClick={() => setIsExportOpen(true)}
+                            className="neu-btn p-3 text-slate-600 hover:text-indigo-600"
+                            title="导出数据"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        </button>
                         <button 
                             onClick={() => setIsImportOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-lg transition-all text-sm font-medium shadow-sm"
+                            className="neu-btn px-5 py-3 text-slate-600 hover:text-indigo-600 flex items-center gap-2 text-sm font-bold"
                         >
                             <UploadIcon className="w-4 h-4" />
-                            <span className="hidden sm:inline">导入</span>
+                            导入
                         </button>
                         <button 
                             onClick={() => { setEditingPrompt(null); setIsFormOpen(true); }}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-all text-sm font-bold shadow-md shadow-indigo-100 active:scale-95"
+                            className="neu-btn neu-btn-primary px-6 py-3 flex items-center gap-2 text-sm font-bold"
                         >
-                            <PlusIcon className="w-4 h-4" />
-                            <span className="hidden sm:inline">新建</span>
-                            <span className="inline sm:hidden">新建</span>
+                            <PlusIcon className="w-5 h-5" />
+                            新建
                         </button>
                     </div>
                 </header>
 
-                {/* Dashboard Content */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-8">
+                {/* Advanced Filter Panel */}
+                <AdvancedFilter 
+                    filter={filters} 
+                    onChange={setFilters} 
+                    availableOptions={availableFilterOptions}
+                    onManage={openAttributeManager}
+                />
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto px-8 pb-8">
                     {filteredPrompts.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                                <SearchIcon className="w-10 h-10 text-slate-300" />
+                        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                            <div className="neu-flat p-6 rounded-full mb-4">
+                                <SearchIcon className="w-8 h-8 text-slate-300" />
                             </div>
-                            <h3 className="text-lg font-medium text-slate-600">未找到相关提示词</h3>
-                            <p className="text-sm">请尝试调整筛选条件或搜索关键词。</p>
+                            <h3 className="text-lg font-bold text-slate-500">未找到相关提示词</h3>
+                            <p className="text-sm mt-2">请尝试调整筛选条件。</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {filteredPrompts.map(prompt => (
                                 <div 
                                     key={prompt.id}
                                     onClick={() => setViewingPrompt(prompt)}
-                                    className="group bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all cursor-pointer flex flex-col h-60"
+                                    className="neu-flat rounded-2xl p-6 cursor-pointer hover:-translate-y-1 transition-transform duration-300 flex flex-col h-64 group"
                                 >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border truncate max-w-[50%] ${CATEGORY_COLORS[prompt.category] || 'bg-slate-100 text-slate-600'}`}>
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="neu-pressed px-3 py-1 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate max-w-[60%]">
                                             {prompt.category}
-                                        </span>
+                                        </div>
                                         <div className="flex gap-0.5 text-amber-400">
                                             <StarIcon filled={true} className="w-4 h-4" />
-                                            <span className="text-xs font-bold text-slate-600 ml-1 pt-0.5">{prompt.rating}.0</span>
+                                            <span className="text-xs font-bold text-slate-500 ml-1 pt-0.5">{prompt.rating}.0</span>
                                         </div>
                                     </div>
                                     
-                                    <h3 className="font-bold text-slate-800 text-lg mb-1 line-clamp-1 leading-snug group-hover:text-indigo-600 transition-colors">
+                                    <h3 className="font-bold text-slate-700 text-lg mb-2 line-clamp-1 group-hover:text-indigo-500 transition-colors">
                                         {prompt.title}
                                     </h3>
                                     
-                                    <div className="flex gap-1 mb-3 overflow-hidden h-5">
-                                        {prompt.tags?.slice(0, 3).map(tag => (
-                                            <span key={tag} className="text-[10px] px-1.5 rounded-md bg-slate-100 text-slate-500 whitespace-nowrap">
-                                                #{tag}
+                                    {/* Advanced Badges */}
+                                    <div className="flex flex-wrap gap-2 mb-3 h-5 overflow-hidden">
+                                        {prompt.model && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200/50 text-slate-500 font-medium truncate">
+                                                {prompt.model}
                                             </span>
-                                        ))}
-                                        {(prompt.tags?.length || 0) > 3 && (
-                                            <span className="text-[10px] text-slate-400">+{prompt.tags!.length - 3}</span>
+                                        )}
+                                        {prompt.parameterType && prompt.parameterType !== '无参数' && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200/50 text-slate-500 font-medium">
+                                                {prompt.parameterType}
+                                            </span>
                                         )}
                                     </div>
                                     
-                                    <p className="text-slate-500 text-sm line-clamp-3 mb-2 flex-1 font-mono bg-slate-50 p-2 rounded border border-transparent group-hover:border-slate-100">
-                                        {prompt.content}
-                                    </p>
+                                    <div className="flex-1 relative mb-3">
+                                        <p className="text-slate-500 text-sm line-clamp-3 font-mono leading-relaxed opacity-80">
+                                            {prompt.content}
+                                        </p>
+                                        <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#EFF3F6] to-transparent"></div>
+                                    </div>
                                     
-                                    <div className="flex justify-between items-center text-xs text-slate-400 mt-auto pt-2 border-t border-slate-50">
-                                        <span className="truncate max-w-[100px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">
+                                    <div className="flex justify-between items-center text-xs text-slate-400 pt-3 border-t border-slate-200/50">
+                                        <span className="font-medium text-slate-500">
                                             {prompt.subCategory}
                                         </span>
-                                        <span className="group-hover:text-indigo-500 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                                            查看详情 &rarr;
+                                        <span className="group-hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100 font-bold">
+                                            详情 &rarr;
                                         </span>
                                     </div>
                                 </div>
@@ -324,7 +394,7 @@ function App() {
         ) : null}
       </main>
 
-      {/* Modals (Only active in dashboard view usually, but kept global for simplicity) */}
+      {/* Modals */}
       <PromptDetailModal 
         prompt={viewingPrompt} 
         onClose={() => setViewingPrompt(null)} 
@@ -342,6 +412,7 @@ function App() {
         onClose={() => { setIsFormOpen(false); setEditingPrompt(null); }}
         onSave={handleAddPrompt}
         categoryTree={categoryTree}
+        attributes={attributes}
       />
 
       <ImportModal 
@@ -349,6 +420,12 @@ function App() {
         onClose={() => setIsImportOpen(false)}
         onImportComplete={handleImport}
         categoryTree={categoryTree}
+      />
+
+      <ExportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        prompts={prompts}
       />
       
       <CategoryManagerModal
@@ -359,6 +436,8 @@ function App() {
         prompts={prompts}
         onUpdatePrompts={handleUpdatePrompts}
         initialTab={categoryManagerInitialTab}
+        attributes={attributes}
+        onSaveAttributes={handleAttributesSave}
       />
     </div>
   );

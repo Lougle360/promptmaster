@@ -6,13 +6,26 @@
     <title>PromptMaster - 专业提示词管理专家</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      /* Custom scrollbar for better aesthetics */
+      :root {
+        --neu-base: #EFF3F6;
+        --neu-shadow-light: #FFFFFF;
+        --neu-shadow-dark: #D1D9E6;
+        --neu-text-main: #4A5568;
+        --neu-primary: #5E9BFF;
+      }
+
+      body {
+        background-color: var(--neu-base);
+        color: var(--neu-text-main);
+      }
+
+      /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #f1f5f9; 
+        background: transparent; 
       }
       ::-webkit-scrollbar-thumb {
         background: #cbd5e1; 
@@ -20,6 +33,52 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #94a3b8; 
+      }
+
+      /* Neumorphism Utilities */
+      .neu-flat {
+        background: var(--neu-base);
+        box-shadow: 6px 6px 12px var(--neu-shadow-dark), 
+                   -6px -6px 12px var(--neu-shadow-light);
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+
+      .neu-pressed {
+        background: var(--neu-base);
+        box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), 
+                   inset -4px -4px 8px var(--neu-shadow-light);
+        border: none;
+      }
+
+      .neu-btn {
+        background: var(--neu-base);
+        box-shadow: 5px 5px 10px var(--neu-shadow-dark), 
+                   -5px -5px 10px var(--neu-shadow-light);
+        transition: all 0.2s ease;
+        border-radius: 12px;
+        color: var(--neu-text-main);
+      }
+      .neu-btn:active {
+        box-shadow: inset 3px 3px 6px var(--neu-shadow-dark), 
+                   inset -3px -3px 6px var(--neu-shadow-light);
+        transform: translateY(1px);
+      }
+
+      .neu-btn-primary {
+        background: var(--neu-primary);
+        color: white;
+        box-shadow: 4px 4px 10px rgba(94, 155, 255, 0.4), 
+                   -4px -4px 10px rgba(255, 255, 255, 0.9);
+      }
+      .neu-btn-primary:active {
+        box-shadow: inset 3px 3px 6px rgba(0,0,0,0.2);
+      }
+
+      .neu-tag {
+        background: var(--neu-base);
+        box-shadow: 3px 3px 6px var(--neu-shadow-dark), 
+                   -3px -3px 6px var(--neu-shadow-light);
+        border-radius: 20px;
       }
     </style>
     <script type="importmap">
@@ -29,13 +88,14 @@
     "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
     "react-dom": "https://esm.sh/react-dom@18.2.0",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/"
   }
 }
 </script>
   </head>
-  <body class="bg-slate-50 text-slate-800 antialiased font-sans">
+  <body class="antialiased font-sans">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>

@@ -1,10 +1,11 @@
 
 import { Prompt, CategoryTree } from '../types';
-import { INITIAL_PROMPTS, DEFAULT_CATEGORY_TREE, RECOMMENDED_TAGS } from '../constants';
+import { INITIAL_PROMPTS, DEFAULT_CATEGORY_TREE, RECOMMENDED_TAGS, DEFAULT_ATTRIBUTES } from '../constants';
 
 const STORAGE_KEY_PROMPTS = 'prompt_manager_data_v2';
 const STORAGE_KEY_CATEGORIES = 'prompt_manager_categories_v1';
 const STORAGE_KEY_TAGS = 'prompt_manager_tags_v1';
+const STORAGE_KEY_ATTRIBUTES = 'prompt_manager_attributes_v1';
 
 export const storageService = {
   getPrompts: (): Prompt[] => {
@@ -100,6 +101,56 @@ export const storageService = {
       } catch (error) {
           console.error("Error saving tags", error);
       }
+  },
+
+  // --- Advanced Attributes Methods ---
+  
+  getAttributes: () => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEY_ATTRIBUTES);
+      if (data) {
+        // Merge with defaults to ensure all keys exist
+        return { ...DEFAULT_ATTRIBUTES, ...JSON.parse(data) };
+      }
+      return DEFAULT_ATTRIBUTES;
+    } catch (error) {
+      return DEFAULT_ATTRIBUTES;
+    }
+  },
+
+  saveAttributes: (attributes: typeof DEFAULT_ATTRIBUTES): void => {
+    try {
+      localStorage.setItem(STORAGE_KEY_ATTRIBUTES, JSON.stringify(attributes));
+    } catch (error) {
+      console.error("Error saving attributes", error);
+    }
+  },
+
+  // --- User Profile ---
+  getUserProfile: () => {
+      try {
+          const data = localStorage.getItem('prompt_manager_user_profile');
+          return data ? JSON.parse(data) : { username: 'Alex Hartman', role: '高级产品经理' };
+      } catch {
+          return { username: 'Alex Hartman', role: '高级产品经理' };
+      }
+  },
+
+  saveUserProfile: (profile: any) => {
+      localStorage.setItem('prompt_manager_user_profile', JSON.stringify(profile));
+  },
+  
+  // --- Auth Session ---
+  isLoggedIn: () => {
+      return !!localStorage.getItem('prompt_manager_session');
+  },
+  
+  login: () => {
+      localStorage.setItem('prompt_manager_session', 'true');
+  },
+  
+  logout: () => {
+      localStorage.removeItem('prompt_manager_session');
   },
 
   // Helper to generate UUID-like string

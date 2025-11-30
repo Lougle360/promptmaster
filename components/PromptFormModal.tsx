@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { XIcon, StarIcon } from './Icons';
+import { XIcon, StarIcon, ChevronDownIcon, CubeIcon } from './Icons';
 import { Prompt, CategoryTree } from '../types';
 import { storageService } from '../services/storageService';
+import { DEFAULT_ATTRIBUTES } from '../constants';
 
 interface PromptFormModalProps {
   isOpen: boolean;
@@ -10,22 +11,28 @@ interface PromptFormModalProps {
   onClose: () => void;
   onSave: (prompt: Prompt) => void;
   categoryTree: CategoryTree;
+  attributes: typeof DEFAULT_ATTRIBUTES;
 }
 
-export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editingPrompt, onClose, onSave, categoryTree }) => {
+export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editingPrompt, onClose, onSave, categoryTree, attributes }) => {
   const [formData, setFormData] = useState<Partial<Prompt>>({
     title: '',
     content: '',
     category: '',
     subCategory: '',
     rating: 3,
-    tags: []
+    tags: [],
+    // Advanced
+    source: '原创',
+    author: '我',
+    parameterType: '无参数',
+    model: '任意'
   });
 
   const [tagInput, setTagInput] = useState('');
   const [recommendedTags, setRecommendedTags] = useState<string[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
-  // Reset form when opening
   useEffect(() => {
     if (isOpen) {
         setRecommendedTags(storageService.getRecommendedTags());
@@ -44,11 +51,29 @@ export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editin
                 category: defaultCategory,
                 subCategory: defaultSubCategory,
                 rating: 3,
-                tags: []
+                tags: [],
+                source: '原创',
+                author: '我',
+                parameterType: '无参数',
+                model: '任意'
             });
         }
     }
   }, [editingPrompt, isOpen, categoryTree]);
+
+  // Auto-detect Parameter Type
+  useEffect(() => {
+      if (formData.content) {
+          const paramCount = (formData.content.match(/{{.*?}}/g) || []).length + (formData.content.match(/\[.*?\]/g) || []).length;
+          let type = '无参数';
+          if (paramCount === 1) type = '单参数';
+          if (paramCount > 1) type = '多参数';
+          
+          if (formData.parameterType !== type) {
+              setFormData(prev => ({ ...prev, parameterType: type as any }));
+          }
+      }
+  }, [formData.content]);
 
   if (!isOpen) return null;
 
@@ -100,6 +125,13 @@ export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editin
       tags: formData.tags || [],
       createdAt: editingPrompt ? editingPrompt.createdAt : Date.now(),
       updatedAt: Date.now(),
+      // Advanced
+      source: formData.source,
+      author: formData.author,
+      parameterType: formData.parameterType as any,
+      agentPlatform: formData.agentPlatform,
+      scenario: formData.scenario,
+      model: formData.model
     };
 
     onSave(newPrompt);
@@ -109,125 +141,191 @@ export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editin
   const subCategories = formData.category ? (categoryTree[formData.category] || []) : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col h-[90vh] md:h-auto md:min-h-[80vh] border border-slate-200 overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#EFF3F6]/80 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="neu-flat rounded-2xl w-full max-w-6xl flex flex-col h-[90vh] md:h-auto md:min-h-[80vh] overflow-hidden relative">
         
-        {/* Form Container */}
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            
-            {/* Header Area */}
-            <div className="flex flex-wrap justify-between items-center gap-4 px-8 py-6 bg-white border-b border-slate-200 shrink-0">
-                <h2 className="text-3xl font-black text-slate-800 tracking-tight leading-tight">
+            {/* Header */}
+            <div className="flex flex-wrap justify-between items-center gap-4 px-8 py-6 shrink-0">
+                <h2 className="text-2xl font-black text-slate-700 tracking-tight">
                     {editingPrompt ? '编辑提示词' : '创建新提示词'}
                 </h2>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                     <button 
                         type="button" 
                         onClick={onClose} 
-                        className="flex items-center justify-center min-w-[84px] h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors"
+                        className="neu-btn px-6 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-800"
                     >
                         取消
                     </button>
                     <button 
                         type="submit" 
-                        className="flex items-center justify-center min-w-[120px] h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold tracking-wide hover:bg-indigo-700 transition-colors shadow-sm"
+                        className="neu-btn neu-btn-primary px-8 py-2.5 text-sm font-bold tracking-wide"
                     >
-                        保存提示词
+                        保存
                     </button>
                 </div>
             </div>
 
-            {/* Main Grid Content */}
+            {/* Main Content */}
             <div className="flex-1 overflow-y-auto p-8">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
                     
-                    {/* Left Column: Main Inputs */}
+                    {/* Left: Content */}
                     <div className="lg:col-span-2 flex flex-col gap-6">
-                        {/* Title */}
                         <div className="flex flex-col">
-                            <label className="text-slate-800 text-base font-medium mb-2" htmlFor="prompt-title">
-                                标题
-                            </label>
+                            <label className="text-slate-600 text-sm font-bold mb-3 ml-1">标题</label>
                             <input
-                                id="prompt-title"
                                 type="text"
                                 required
                                 value={formData.title}
                                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                className="w-full px-4 h-14 rounded-lg border border-slate-300 bg-white text-slate-900 text-base focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400"
-                                placeholder="例如：生成高转化率的营销邮件标题"
+                                className="w-full neu-pressed rounded-xl px-5 h-14 text-slate-700 font-medium text-lg placeholder:text-slate-400 focus:outline-none"
+                                placeholder="输入提示词标题..."
                             />
                         </div>
 
-                        {/* Content */}
                         <div className="flex flex-col flex-1 min-h-[400px]">
-                            <label className="text-slate-800 text-base font-medium mb-2" htmlFor="prompt-content">
-                                提示词内容
-                            </label>
+                            <label className="text-slate-600 text-sm font-bold mb-3 ml-1">内容</label>
                             <textarea
-                                id="prompt-content"
                                 required
                                 value={formData.content}
                                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                                className="w-full flex-1 p-4 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-mono leading-relaxed focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 resize-none"
-                                placeholder="在此详细描述您的提示词指令..."
+                                className="w-full flex-1 neu-pressed rounded-xl p-5 text-slate-700 font-mono leading-relaxed placeholder:text-slate-400 focus:outline-none resize-none"
+                                placeholder="输入提示词详细内容..."
                             />
                         </div>
                     </div>
 
-                    {/* Right Column: Properties Sidebar */}
-                    <div className="lg:col-span-1 flex flex-col gap-6 lg:border-l lg:pl-8 border-slate-200">
-                        <div className="border-b border-slate-200 pb-2">
-                             <h3 className="text-lg font-bold text-slate-800 tracking-tight">属性设置</h3>
+                    {/* Right: Properties */}
+                    <div className="lg:col-span-1 flex flex-col gap-8 lg:pl-4">
+                        
+                        {/* 1. Classification */}
+                        <div className="space-y-4">
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">基础分类</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-slate-500 text-xs font-bold mb-2 block">一级领域</label>
+                                    <select
+                                        value={formData.category}
+                                        onChange={handleCategoryChange}
+                                        className="w-full neu-pressed rounded-lg h-12 px-4 text-slate-600 outline-none"
+                                    >
+                                        {Object.keys(categoryTree).map((c) => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-slate-500 text-xs font-bold mb-2 block">二级子类</label>
+                                    <select
+                                        value={formData.subCategory}
+                                        onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
+                                        className="w-full neu-pressed rounded-lg h-12 px-4 text-slate-600 outline-none disabled:opacity-50"
+                                        disabled={subCategories.length === 0}
+                                    >
+                                        {subCategories.map((s) => (
+                                            <option key={s} value={s}>{s}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
-                        {/* Category */}
-                        <div className="flex flex-col">
-                            <label className="text-slate-700 text-base font-medium mb-2">
-                                一级领域
-                            </label>
-                            <select
-                                value={formData.category}
-                                onChange={handleCategoryChange}
-                                className="w-full px-4 h-14 rounded-lg border border-slate-300 bg-white text-slate-700 text-base focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                        {/* 2. Advanced Properties (6-Dimensions) */}
+                        <div className="space-y-4">
+                            <div 
+                                className="flex items-center justify-between cursor-pointer group"
+                                onClick={() => setShowAdvanced(!showAdvanced)}
                             >
-                                {Object.keys(categoryTree).map((c) => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                            </select>
+                                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-500 transition-colors">
+                                    高级属性 (6维)
+                                </h3>
+                                <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+                            </div>
+                            
+                            {showAdvanced && (
+                                <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="col-span-1">
+                                        <label className="text-slate-500 text-xs font-bold mb-1 block">来源</label>
+                                        <input 
+                                            list="source-options"
+                                            value={formData.source}
+                                            onChange={(e) => setFormData({...formData, source: e.target.value})}
+                                            className="w-full neu-pressed rounded-lg h-10 px-3 text-sm" 
+                                            placeholder="如: Way2agi"
+                                        />
+                                        <datalist id="source-options">{attributes.sources.map(o => <option key={o} value={o} />)}</datalist>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="text-slate-500 text-xs font-bold mb-1 block">作者</label>
+                                        <input 
+                                            list="author-options"
+                                            value={formData.author}
+                                            onChange={(e) => setFormData({...formData, author: e.target.value})}
+                                            className="w-full neu-pressed rounded-lg h-10 px-3 text-sm" 
+                                        />
+                                        <datalist id="author-options">{attributes.authors.map(o => <option key={o} value={o} />)}</datalist>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="text-slate-500 text-xs font-bold mb-1 block">参数</label>
+                                        <select 
+                                            value={formData.parameterType}
+                                            onChange={(e) => setFormData({...formData, parameterType: e.target.value as any})}
+                                            className="w-full neu-pressed rounded-lg h-10 px-3 text-sm outline-none"
+                                        >
+                                            {attributes.parameterTypes.map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="text-slate-500 text-xs font-bold mb-1 block">模型</label>
+                                        <input 
+                                            list="model-options"
+                                            value={formData.model}
+                                            onChange={(e) => setFormData({...formData, model: e.target.value})}
+                                            className="w-full neu-pressed rounded-lg h-10 px-3 text-sm" 
+                                        />
+                                        <datalist id="model-options">{attributes.models.map(o => <option key={o} value={o} />)}</datalist>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="text-slate-500 text-xs font-bold mb-1 block">智能体</label>
+                                        <input 
+                                            list="agent-options"
+                                            value={formData.agentPlatform}
+                                            onChange={(e) => setFormData({...formData, agentPlatform: e.target.value})}
+                                            className="w-full neu-pressed rounded-lg h-10 px-3 text-sm" 
+                                            placeholder="选填"
+                                        />
+                                        <datalist id="agent-options">{attributes.agentPlatforms.map(o => <option key={o} value={o} />)}</datalist>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="text-slate-500 text-xs font-bold mb-1 block">场景</label>
+                                        <input 
+                                            list="scenario-options"
+                                            value={formData.scenario}
+                                            onChange={(e) => setFormData({...formData, scenario: e.target.value})}
+                                            className="w-full neu-pressed rounded-lg h-10 px-3 text-sm" 
+                                            placeholder="选填"
+                                        />
+                                        <datalist id="scenario-options">{attributes.scenarios.map(o => <option key={o} value={o} />)}</datalist>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* SubCategory */}
-                        <div className="flex flex-col">
-                            <label className="text-slate-700 text-base font-medium mb-2">
-                                二级子类
-                            </label>
-                            <select
-                                value={formData.subCategory}
-                                onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
-                                className="w-full px-4 h-14 rounded-lg border border-slate-300 bg-white text-slate-700 text-base focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
-                                disabled={subCategories.length === 0}
-                            >
-                                {subCategories.map((s) => (
-                                    <option key={s} value={s}>{s}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Tags */}
-                        <div className="flex flex-col gap-2">
-                             <label className="text-slate-700 text-base font-medium">标签</label>
-                             {/* Tag Input Container */}
-                             <div className="flex w-full flex-wrap gap-2 p-2 rounded-lg border border-slate-300 bg-white min-h-[56px] focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all">
+                        {/* 3. Tags */}
+                        <div className="space-y-4">
+                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">标签</h3>
+                             <div className="neu-pressed rounded-xl p-3 flex flex-wrap gap-2 min-h-[60px] content-start">
                                 {(formData.tags || []).map(tag => (
-                                    <span key={tag} className="flex items-center gap-1 pl-3 pr-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium border border-indigo-100">
-                                        {tag}
+                                    <span key={tag} className="neu-tag px-3 py-1 text-sm font-medium text-indigo-600 flex items-center gap-1">
+                                        #{tag}
                                         <button 
                                             type="button"
                                             onClick={() => handleRemoveTag(tag)} 
-                                            className="text-indigo-400 hover:text-indigo-700 p-0.5 rounded-full hover:bg-indigo-100 transition-colors"
+                                            className="hover:text-red-500 transition-colors"
                                         >
-                                            <XIcon className="w-3.5 h-3.5" />
+                                            <XIcon className="w-3 h-3" />
                                         </button>
                                     </span>
                                 ))}
@@ -235,20 +333,18 @@ export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editin
                                     value={tagInput}
                                     onChange={(e) => setTagInput(e.target.value)}
                                     onKeyDown={handleKeyDown}
-                                    placeholder={(formData.tags?.length || 0) === 0 ? "输入标签按回车..." : "添加..."}
-                                    className="flex-1 bg-transparent p-1.5 text-slate-800 placeholder:text-slate-400 outline-none min-w-[80px]"
+                                    placeholder="输入回车..."
+                                    className="bg-transparent text-sm text-slate-600 placeholder:text-slate-400 outline-none min-w-[80px] flex-1"
                                 />
                              </div>
-                             
-                             {/* Recommended Tags */}
-                             <div className="flex flex-wrap gap-2 mt-1">
-                                {recommendedTags.slice(0, 8).map(tag => (
+                             <div className="flex flex-wrap gap-2">
+                                {recommendedTags.slice(0, 5).map(tag => (
                                     <button
                                         key={tag}
                                         type="button"
                                         onClick={() => handleAddTag(tag)}
                                         disabled={(formData.tags || []).includes(tag)}
-                                        className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                        className="neu-btn px-3 py-1 text-xs text-slate-500 hover:text-indigo-600 disabled:opacity-50"
                                     >
                                         {tag}
                                     </button>
@@ -256,20 +352,18 @@ export const PromptFormModal: React.FC<PromptFormModalProps> = ({ isOpen, editin
                              </div>
                         </div>
 
-                        {/* Rating */}
-                        <div className="flex flex-col gap-2 mt-2">
-                             <label className="text-slate-700 text-base font-medium">质量评级</label>
-                             <div className="flex items-center gap-2">
+                        {/* 4. Rating */}
+                        <div className="space-y-4 mt-auto">
+                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">评级</h3>
+                             <div className="flex items-center gap-3">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                     <button
                                         key={star}
                                         type="button"
                                         onClick={() => setFormData({ ...formData, rating: star })}
-                                        className={`focus:outline-none transition-transform hover:scale-110 ${
-                                            (formData.rating || 0) >= star ? 'text-amber-400' : 'text-slate-200 hover:text-amber-200'
-                                        }`}
+                                        className="focus:outline-none hover:scale-110 transition-transform"
                                     >
-                                        <StarIcon filled={(formData.rating || 0) >= star} className="w-8 h-8" />
+                                        <StarIcon filled={(formData.rating || 0) >= star} className={`w-8 h-8 ${ (formData.rating || 0) >= star ? 'text-amber-400 drop-shadow-md' : 'text-slate-300'}`} />
                                     </button>
                                 ))}
                              </div>

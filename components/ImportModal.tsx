@@ -92,7 +92,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   // --- Markdown Handlers ---
   const handleMdUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files) {
-          const files = Array.from(e.target.files).slice(0, 8); // Max 8
+          const files: File[] = Array.from(e.target.files).slice(0, 8) as File[]; // Max 8
           setMdFiles(files);
           
           const newPreviews: Partial<Prompt>[] = [];
